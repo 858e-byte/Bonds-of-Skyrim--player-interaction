@@ -23,7 +23,8 @@ Nexus Mods under the permissions shown on the mod page.
 ## What the plugin does
 - shows the addon's menu page with PrismaUI (view `AMLS_Solo/index.html`) and sends the choice back to Papyrus as the
   mod event `AMLS_UIAction`;
-- the Papyrus functions of the script `AMLS_Native` (`IsLoaded`, `UIReady`, `OpenUI`, `CloseUI`, `GetFoods`).
+- the Papyrus functions of the script `AMLS_Native` (`IsLoaded`, `UIReady`, `OpenUI`, `CloseUI`, `GetFoods`,
+  `GetSchoolSpell`, `GetBestWeapon`, `GetBestShield`).
 
 ## How to build (Windows)
 1. Install Visual Studio 2022 (or its Build Tools) with "Desktop development with C++".

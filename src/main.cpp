@@ -141,8 +141,123 @@ namespace
 		return foods;
 	}
 
+	// (noms compares sans les majuscules : Papyrus partage ses chaines sans les distinguer)
+	// 0.1.7 : le meilleur sort connu d'une ecole ("Destruction", "Restoration"...), pour l'entrainement a la magie.
+	// Sorts ajoutes au joueur + ceux de sa base et de sa race ; sorts a lancer en main seulement (pas pouvoirs, pas
+	// capacites, pas a deux mains). Le plus cher en magie d'abord (le plus avance).
+	RE::TESForm* GetSchoolSpell(RE::StaticFunctionTag*, std::string a_school)
+	{
+		const auto player = RE::PlayerCharacter::GetSingleton();
+		if (!player) {
+			return nullptr;
+		}
+		RE::ActorValue wanted = RE::ActorValue::kNone;
+		if (_stricmp(a_school.c_str(), "Destruction") == 0) wanted = RE::ActorValue::kDestruction;
+		else if (_stricmp(a_school.c_str(), "Restoration") == 0) wanted = RE::ActorValue::kRestoration;
+		else if (_stricmp(a_school.c_str(), "Alteration") == 0) wanted = RE::ActorValue::kAlteration;
+		else if (_stricmp(a_school.c_str(), "Illusion") == 0) wanted = RE::ActorValue::kIllusion;
+		else if (_stricmp(a_school.c_str(), "Conjuration") == 0) wanted = RE::ActorValue::kConjuration;
+		if (wanted == RE::ActorValue::kNone) {
+			return nullptr;
+		}
+		RE::SpellItem* best = nullptr;
+		float bestCost = -1.0f;
+		const auto consider = [&](RE::SpellItem* a_spell) {
+			if (!a_spell || a_spell->GetSpellType() != RE::MagicSystem::SpellType::kSpell || a_spell->IsTwoHanded()) {
+				return;
+			}
+			if (a_spell->GetCastingType() == RE::MagicSystem::CastingType::kConstantEffect || a_spell->GetAssociatedSkill() != wanted) {
+				return;
+			}
+			const float cost = a_spell->CalculateMagickaCost(player);
+			if (cost > bestCost) {
+				bestCost = cost;
+				best = a_spell;
+			}
+		};
+		for (const auto spell : player->GetActorRuntimeData().addedSpells) {
+			consider(spell);
+		}
+		const auto list = [&](RE::TESSpellList::SpellData* a_data) {
+			if (a_data && a_data->spells) {
+				for (std::uint32_t i = 0; i < a_data->numSpells; ++i) {
+					consider(a_data->spells[i]);
+				}
+			}
+		};
+		if (const auto base = player->GetActorBase()) {
+			list(base->GetSpellList());
+		}
+		if (const auto race = player->GetRace()) {
+			list(race->actorEffects);
+		}
+		return best;
+	}
+
+	// 0.1.7 : la meilleure arme que porte le joueur, par genre : 1 a une main (epee, dague, hache, masse), 2 a deux mains,
+	// 3 arc. La plus forte d'abord (degats de base).
+	RE::TESForm* GetBestWeapon(RE::StaticFunctionTag*, std::int32_t a_kind)
+	{
+		const auto player = RE::PlayerCharacter::GetSingleton();
+		if (!player) {
+			return nullptr;
+		}
+		const auto items = player->GetInventory([a_kind](RE::TESBoundObject& a_obj) {
+			const auto w = a_obj.As<RE::TESObjectWEAP>();
+			if (!w || !w->GetPlayable()) {
+				return false;
+			}
+			switch (a_kind) {
+			case 1:
+				return w->IsOneHandedSword() || w->IsOneHandedDagger() || w->IsOneHandedAxe() || w->IsOneHandedMace();
+			case 2:
+				return w->IsTwoHandedSword() || w->IsTwoHandedAxe();
+			case 3:
+				return w->IsBow();
+			default:
+				return false;
+			}
+		});
+		RE::TESForm* best = nullptr;
+		int bestDamage = -1;
+		for (const auto& [obj, data] : items) {
+			const auto w = obj ? obj->As<RE::TESObjectWEAP>() : nullptr;
+			if (w && data.first > 0 && static_cast<int>(w->GetAttackDamage()) > bestDamage) {
+				bestDamage = w->GetAttackDamage();
+				best = w;
+			}
+		}
+		return best;
+	}
+
+	// 0.1.7 : le meilleur bouclier que porte le joueur (note d'armure de base).
+	RE::TESForm* GetBestShield(RE::StaticFunctionTag*)
+	{
+		const auto player = RE::PlayerCharacter::GetSingleton();
+		if (!player) {
+			return nullptr;
+		}
+		const auto items = player->GetInventory([](RE::TESBoundObject& a_obj) {
+			const auto a = a_obj.As<RE::TESObjectARMO>();
+			return a && a->IsShield();
+		});
+		RE::TESForm* best = nullptr;
+		float bestRating = -1.0f;
+		for (const auto& [obj, data] : items) {
+			const auto a = obj ? obj->As<RE::TESObjectARMO>() : nullptr;
+			if (a && data.first > 0 && a->GetArmorRating() > bestRating) {
+				bestRating = a->GetArmorRating();
+				best = a;
+			}
+		}
+		return best;
+	}
+
 	bool RegisterFunctions(RE::BSScript::IVirtualMachine* a_vm)
 	{
+		a_vm->RegisterFunction("GetSchoolSpell", "AMLS_Native", GetSchoolSpell);
+		a_vm->RegisterFunction("GetBestWeapon", "AMLS_Native", GetBestWeapon);
+		a_vm->RegisterFunction("GetBestShield", "AMLS_Native", GetBestShield);
 		a_vm->RegisterFunction("IsLoaded", "AMLS_Native", IsLoaded, true);
 		a_vm->RegisterFunction("UIReady", "AMLS_Native", UIReady);
 		a_vm->RegisterFunction("OpenUI", "AMLS_Native", OpenUI);
